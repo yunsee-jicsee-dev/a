@@ -1,0 +1,50 @@
+#!/bin/sh
+# PID 1 of the GATE16 boot CD: bring up the console, load drivers for the
+# motherboard's hardware, then keep the GATE16 editor running on tty1.
+export PATH=/bin HOME=/root TERM=linux
+
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev 2>/dev/null
+mkdir -p /dev/pts /dev/shm
+mount -t devpts devpts /dev/pts
+mount -t tmpfs tmpfs /tmp
+hostname gate16
+
+case " $(cat /proc/cmdline) " in
+*" gate16.debug "*) ;;
+*) dmesg -n 1 ;;    # keep kernel messages off the editor screen
+esac
+
+# Drivers: new devices are handled by mdev (see /etc/mdev.conf), devices
+# that already exist are coldplugged from their modalias. USB keyboards show
+# up only after their host controller driver loads, so repeat a few times.
+coldplug() {
+	find /sys/devices -name modalias -exec cat {} + 2>/dev/null |
+		sort -u | xargs -r modprobe -q -b -a 2>/dev/null
+}
+echo /bin/mdev >/proc/sys/kernel/hotplug
+coldplug
+mdev -s
+(for i in 1 2 3 4 5; do sleep 1; coldplug; done) &
+
+TTY=/dev/tty1
+
+run_shell() {
+	printf '\033[0m\033[2J\033[H' >$TTY
+	echo "GATE16 BusyBox shell. Type 'exit' to return to the editor." >$TTY
+	setsid -c sh -l <$TTY >$TTY 2>&1
+}
+
+case " $(cat /proc/cmdline) " in
+*" gate16.shell "*) run_shell ;;
+esac
+
+while :; do
+	setsid -c /bin/gate16 <$TTY >$TTY 2>&1
+	case $? in
+	10) run_shell ;;
+	11) sync; reboot -f ;;
+	12) sync; poweroff -f ;;
+	esac
+done

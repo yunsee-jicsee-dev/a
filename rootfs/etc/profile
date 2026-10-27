@@ -1,0 +1,3 @@
+export PATH=/bin HOME=/root TERM=linux
+PS1='gate16# '
+alias gate16='/bin/gate16'
