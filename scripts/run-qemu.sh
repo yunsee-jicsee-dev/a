@@ -7,7 +7,7 @@ set -euo pipefail
 ISO=$(cd "$(dirname "$0")/.." && pwd)/out/gate16.iso
 MODE=${1:-bios}
 shift || true
-args=(-m 512 -cdrom "$ISO" -boot d -device qemu-xhci -device usb-kbd)
+args=(-m 512 -cdrom "$ISO" -boot d -device qemu-xhci -device usb-kbd -device usb-mouse)
 [ -w /dev/kvm ] && args+=(-enable-kvm)
 case $MODE in
 bios) ;;

@@ -12,8 +12,8 @@
  * Any gate input may come from any other gate, so feedback circuits
  * (latches, flip-flops) work; oscillating circuits are detected.
  *
- * Exit codes (interpreted by the boot /init script):
- *   0 restart editor, 10 shell, 11 reboot, 12 power off.
+ * This is the text-mode editor; board.c is the graphical, mouse-driven one.
+ * Exit codes are listed in gate16.h.
  */
 #define _GNU_SOURCE
 #include <errno.h>
@@ -29,14 +29,13 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "gate16.h"
+
 #define NGATES 16
 #define NIN 8
 #define NOUT 8
 #define MAXITER 64
 
-#define EXIT_SHELL 10
-#define EXIT_REBOOT 11
-#define EXIT_POWEROFF 12
 
 /* ------------------------------------------------------------------ model */
 
@@ -287,7 +286,7 @@ struct cell {
 	unsigned char attr;
 };
 static struct cell scr[SH][SW];
-static int ttyfd = 1;
+int ttyfd = 1;
 
 static void scr_clear(void)
 {
@@ -419,22 +418,17 @@ static void scr_flush(void)
 
 /* ---------------------------------------------------------------- input */
 
-enum {
-	K_NONE = 0, K_UP = 1000, K_DOWN, K_LEFT, K_RIGHT, K_PGUP, K_PGDN,
-	K_HOME, K_END, K_DEL, K_INS, K_F1, K_F2, K_F3, K_F4, K_F5, K_ESC
-};
-
 static struct termios saved_tio;
 static int tio_saved;
 
-static void tty_restore(void)
+void tty_restore(void)
 {
 	if (tio_saved) tcsetattr(ttyfd, TCSAFLUSH, &saved_tio);
 	/* reset attributes, show cursor, clear */
 	if (write(ttyfd, "\033[0m\033[?25h\033[2J\033[H", 18) < 0) {}
 }
 
-static void tty_raw(void)
+void tty_raw(void)
 {
 	struct termios t;
 	if (tcgetattr(0, &saved_tio) == 0) {
@@ -465,7 +459,7 @@ static int rd_byte(int timeout_ms)
 }
 
 /* Read one key, decoding Linux console / xterm escape sequences. */
-static int read_key(int timeout_ms)
+int read_key(int timeout_ms)
 {
 	int c = rd_byte(timeout_ms);
 	if (c < 0) return K_NONE;
@@ -753,7 +747,7 @@ static void draw_help(int page)
 		"  1..8  toggle input switch   C  run/stop clock   K  single clock step",
 		"  [ ]   slower / faster clock T  truth table of all outputs",
 		"  P presets (adders, latches, mux, comparator, divider)  N new circuit",
-		"  Q menu: resume / shell / reboot / power off",
+		"  Q menu: resume / shell / reboot / power off / graphic board",
 	};
 	(void)page;
 	scr_clear();
@@ -863,12 +857,13 @@ static void draw_presets(int sel)
 static void draw_menu(void)
 {
 	draw_main();
-	box(7, 24, 9, 32, "MENU");
+	box(7, 24, 10, 32, "MENU");
 	put(9, 27, A_KEY, "R");  put(9, 29, A_NORM, "Resume editing");
 	put(10, 27, A_KEY, "S"); put(10, 29, A_NORM, "Linux shell (busybox)");
 	put(11, 27, A_KEY, "B"); put(11, 29, A_NORM, "Reboot");
 	put(12, 27, A_KEY, "P"); put(12, 29, A_NORM, "Power off");
-	put(14, 27, A_DIM, "Esc returns to the editor");
+	put(13, 27, A_KEY, "G"); put(13, 29, A_NORM, "Graphic board (mouse)");
+	put(15, 27, A_DIM, "Esc returns to the editor");
 }
 
 /* Single-line text entry in a small box; returns 1 if confirmed. */
@@ -1001,6 +996,7 @@ static int run_menu(void)
 		case 's': case 'S': return EXIT_SHELL;
 		case 'b': case 'B': return EXIT_REBOOT;
 		case 'p': case 'P': return EXIT_POWEROFF;
+		case 'g': case 'G': return EXIT_BOARD;
 		}
 	}
 }
@@ -1082,7 +1078,7 @@ static int selftest(void)
 	C.g[0] = (struct gate){T_NOT, S_G0, S_NONE};
 	simulate();
 	CHECK(!sim_stable, "ring oscillator detected");
-	printf(fails ? "%d check(s) failed\n" : "all checks passed\n", fails);
+	printf(fails ? "text editor: %d check(s) failed\n" : "text editor: all checks passed\n", fails);
 	return fails ? 1 : 0;
 }
 
@@ -1090,7 +1086,7 @@ static int selftest(void)
 
 int main(int argc, char **argv)
 {
-	if (argc > 1 && !strcmp(argv[1], "--selftest")) return selftest();
+	if (argc > 1 && !strcmp(argv[1], "--selftest")) return selftest() | board_selftest();
 	if (!isatty(0)) {
 		fprintf(stderr, "gate16: stdin must be a terminal\n");
 		return 1;
@@ -1098,6 +1094,10 @@ int main(int argc, char **argv)
 	signal(SIGINT, SIG_IGN);
 	signal(SIGQUIT, SIG_IGN);
 	signal(SIGTSTP, SIG_IGN);
+	if (!(argc > 1 && !strcmp(argv[1], "--tui"))) {
+		int rc = board_main();
+		if (rc >= 0) return rc;
+	}
 	tty_raw();
 	atexit(tty_restore);
 

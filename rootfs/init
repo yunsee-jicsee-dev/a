@@ -36,15 +36,22 @@ run_shell() {
 	setsid -c sh -l <$TTY >$TTY 2>&1
 }
 
+# graphical board by default, classic text editor with gate16.tui
+MODE=
 case " $(cat /proc/cmdline) " in
 *" gate16.shell "*) run_shell ;;
 esac
+case " $(cat /proc/cmdline) " in
+*" gate16.tui "*) MODE=--tui ;;
+esac
 
 while :; do
-	setsid -c /bin/gate16 <$TTY >$TTY 2>&1
+	setsid -c /bin/gate16 $MODE <$TTY >$TTY 2>&1
 	case $? in
 	10) run_shell ;;
 	11) sync; reboot -f ;;
 	12) sync; poweroff -f ;;
+	13) MODE=--tui ;;
+	14) MODE= ;;
 	esac
 done

@@ -45,7 +45,7 @@ KMOD=$WORK/kernel/lib/modules/$KVER
 echo "    $KVER"
 
 echo "==> gate16 editor"
-gcc -O2 -Wall -Wextra -Wno-format-truncation -static -s -o "$WORK/gate16" "$TOP/src/gate16.c"
+gcc -O2 -Wall -Wextra -Wno-format-truncation -static -s -o "$WORK/gate16" "$TOP/src/gate16.c" "$TOP/src/board.c" -lm
 "$WORK/gate16" --selftest
 
 echo "==> initramfs"
